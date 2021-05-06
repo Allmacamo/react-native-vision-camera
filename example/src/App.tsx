@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useRef, useState, useMemo, useCallback } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, TextInput } from 'react-native';
 import {
   PinchGestureHandler,
   PinchGestureHandlerGestureEvent,
@@ -9,7 +9,7 @@ import {
   TapGestureHandlerStateChangeEvent,
 } from 'react-native-gesture-handler';
 import { Navigation, NavigationFunctionComponent } from 'react-native-navigation';
-import type { CameraDeviceFormat, CameraRuntimeError, PhotoFile, VideoFile } from 'react-native-vision-camera';
+import { CameraDeviceFormat, CameraRuntimeError, PhotoFile, useFrameProcessor, VideoFile } from 'react-native-vision-camera';
 import { Camera, frameRateIncluded, sortFormatsByResolution, filterFormatsByAspectRatio } from 'react-native-vision-camera';
 import { useIsScreenFocused } from './hooks/useIsScreenFocused';
 import { CONTENT_SPACING, MAX_ZOOM_FACTOR, SAFE_AREA_PADDING } from './Constants';
@@ -24,6 +24,8 @@ import IonIcon from 'react-native-vector-icons/Ionicons';
 import { useSelector } from 'pipestate';
 import { FpsSelector } from './state/selectors';
 import { useCameraDevice } from './hooks/useCameraDevice';
+import { scanQRCodesObjC } from './frame-processors/ScanQRCode';
+import AnimateableText from 'react-native-animateable-text';
 
 const ReanimatedCamera = Reanimated.createAnimatedComponent(Camera);
 Reanimated.addWhitelistedNativeProps({
@@ -62,6 +64,7 @@ export const App: NavigationFunctionComponent = ({ componentId }) => {
   const [targetFps] = useSelector(FpsSelector);
   console.log(`Target FPS: ${targetFps}`);
   const fps = useMemo(() => {
+    return 20;
     if (enableNightMode && !device?.supportsLowLightBoost) {
       // User has enabled Night Mode, but Night Mode is not natively supported, so we simulate it by lowering the frame rate.
       return 30;
@@ -211,11 +214,24 @@ export const App: NavigationFunctionComponent = ({ componentId }) => {
     console.log('re-rendering camera page without active camera');
   }
 
-  // const frameProcessor = useFrameProcessor((frame) => {
-  //   'worklet';
-  //   const codes = scanQRCodesObjC(frame);
-  //   _log(`Codes: ${JSON.stringify(codes)}`);
-  // }, []);
+  const codes = useSharedValue<{ label: string; confidence: number }[]>([]);
+
+  const frameProcessor = useFrameProcessor(
+    (frame) => {
+      'worklet';
+      const c = scanQRCodesObjC(frame);
+      _log(c.map((l) => l.label).toString());
+      codes.value = c;
+    },
+    [codes],
+  );
+
+  const animatedTextProps = useAnimatedProps(() => {
+    console.log(`Mapping ${codes.value.map((c) => c.label)}...`);
+    return {
+      text: codes.value[0]?.label ?? '🤔',
+    };
+  }, [codes]);
 
   // TODO: Implement camera flipping (back <-> front) while recording and stich the videos together
   // TODO: iOS: Use custom video data stream output to manually process the data and write the MOV/MP4 for more customizability.
@@ -238,8 +254,8 @@ export const App: NavigationFunctionComponent = ({ componentId }) => {
                 onError={onError}
                 enableZoomGesture={false}
                 animatedProps={cameraAnimatedProps}
-                // frameProcessor={frameProcessor}
-                // frameProcessorFps={1}
+                frameProcessor={frameProcessor}
+                frameProcessorFps={3}
               />
             </TapGestureHandler>
           </Reanimated.View>
@@ -257,6 +273,11 @@ export const App: NavigationFunctionComponent = ({ componentId }) => {
       />
 
       <StatusBarBlurBackground />
+
+      <AnimateableText
+        style={{ position: 'absolute', backgroundColor: 'black', color: 'white', top: 50, alignSelf: 'center', fontSize: 30 }}
+        animatedProps={animatedTextProps}
+      />
 
       <View style={styles.rightButtonRow}>
         {supportsCameraFlipping && (
