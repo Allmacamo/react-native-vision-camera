@@ -1,0 +1,136 @@
+diff --git a/node_modules/react-native-reanimated/Common/cpp/SharedItems/MutableValue.cpp b/node_modules/react-native-reanimated/Common/cpp/SharedItems/MutableValue.cpp
+index da4b9cb..2f5e04a 100644
+--- a/node_modules/react-native-reanimated/Common/cpp/SharedItems/MutableValue.cpp
++++ b/node_modules/react-native-reanimated/Common/cpp/SharedItems/MutableValue.cpp
+@@ -16,7 +16,7 @@ void MutableValue::setValue(jsi::Runtime &rt, const jsi::Value &newValue) {
+       listener.second();
+     }
+   };
+-  if (RuntimeDecorator::isWorkletRuntime(rt)) {
++  if (RuntimeDecorator::isUIRuntime(rt)) {
+     notifyListeners();
+   } else {
+     runtimeManager->scheduler->scheduleOnUI([notifyListeners] {
+@@ -32,8 +32,27 @@ jsi::Value MutableValue::getValue(jsi::Runtime &rt) {
+ 
+ void MutableValue::set(jsi::Runtime &rt, const jsi::PropNameID &name, const jsi::Value &newValue) {
+   auto propName = name.utf8(rt);
++  if (!runtimeManager->valueSetter) {
++    throw jsi::JSError(rt, "Value-Setter is not yet configured! Make sure the core-functions are installed.");
++  }
+   
+-  if (RuntimeDecorator::isReactRuntime(rt)) {
++  if (RuntimeDecorator::isUIRuntime(rt)) {
++    // UI thread
++    if (propName == "value") {
++      auto setterProxy = jsi::Object::createFromHostObject(rt, std::make_shared<MutableValueSetterProxy>(shared_from_this()));
++      runtimeManager->valueSetter->getValue(rt)
++      .asObject(rt)
++      .asFunction(rt)
++      .callWithThis(rt, setterProxy, newValue);
++    } else if (propName == "_animation") {
++      // TODO: assert to allow animation to be set from UI only
++      if (animation.expired()) {
++        animation = getWeakRef(rt);
++      }
++      *animation.lock() = jsi::Value(rt, newValue);
++    }
++  } else {
++    // React-JS Thread or another threaded Runtime.
+     if (propName == "value") {
+       auto shareable = ShareableValue::adapt(rt, newValue, runtimeManager);
+       runtimeManager->scheduler->scheduleOnUI([this, shareable] {
+@@ -41,28 +60,13 @@ void MutableValue::set(jsi::Runtime &rt, const jsi::PropNameID &name, const jsi:
+         auto setterProxy = jsi::Object::createFromHostObject(rt, std::make_shared<MutableValueSetterProxy>(shared_from_this()));
+         jsi::Value newValue = shareable->getValue(rt);
+         runtimeManager->valueSetter->getValue(rt)
+-          .asObject(rt)
+-          .asFunction(rt)
+-          .callWithThis(rt, setterProxy, newValue);
++        .asObject(rt)
++        .asFunction(rt)
++        .callWithThis(rt, setterProxy, newValue);
+       });
+     }
+-    return;
+   }
+   
+-  // UI thread
+-  if (propName == "value") {
+-    auto setterProxy = jsi::Object::createFromHostObject(rt, std::make_shared<MutableValueSetterProxy>(shared_from_this()));
+-    runtimeManager->valueSetter->getValue(rt)
+-      .asObject(rt)
+-      .asFunction(rt)
+-      .callWithThis(rt, setterProxy, newValue);
+-  } else if (propName == "_animation") {
+-    // TODO: assert to allow animation to be set from UI only
+-    if (animation.expired()) {
+-      animation = getWeakRef(rt);
+-    }
+-    *animation.lock() = jsi::Value(rt, newValue);
+-  }
+ }
+ 
+ jsi::Value MutableValue::get(jsi::Runtime &rt, const jsi::PropNameID &name) {
+@@ -72,7 +76,7 @@ jsi::Value MutableValue::get(jsi::Runtime &rt, const jsi::PropNameID &name) {
+     return getValue(rt);
+   }
+   
+-  if (RuntimeDecorator::isWorkletRuntime(rt)) {
++  if (RuntimeDecorator::isUIRuntime(rt)) {
+     // _value and _animation should be accessed from UI only
+     if (propName == "_value") {
+       return getValue(rt);
+diff --git a/node_modules/react-native-reanimated/Common/cpp/Tools/RuntimeDecorator.cpp b/node_modules/react-native-reanimated/Common/cpp/Tools/RuntimeDecorator.cpp
+index 4702d87..bf446c4 100644
+--- a/node_modules/react-native-reanimated/Common/cpp/Tools/RuntimeDecorator.cpp
++++ b/node_modules/react-native-reanimated/Common/cpp/Tools/RuntimeDecorator.cpp
+@@ -67,6 +67,7 @@ void RuntimeDecorator::decorateUIRuntime(jsi::Runtime &rt,
+                                          MeasuringFunction measure,
+                                          TimeProviderFunction getCurrentTime) {
+   RuntimeDecorator::decorateRuntime(rt, "UI");
++  rt.global().setProperty(rt, "_UI", jsi::Value(true));
+   
+   auto clb = [updater](
+                        jsi::Runtime &rt,
+@@ -147,11 +148,16 @@ void RuntimeDecorator::decorateUIRuntime(jsi::Runtime &rt,
+   rt.global().setProperty(rt, "_eventTimestamp", jsi::Value::undefined());
+ }
+ 
+-bool RuntimeDecorator::isWorkletRuntime(jsi::Runtime& rt) {
+-  auto isUi = rt.global().getProperty(rt, "_WORKLET");
++bool RuntimeDecorator::isUIRuntime(jsi::Runtime& rt) {
++  auto isUi = rt.global().getProperty(rt, "_UI");
+   return isUi.isBool() && isUi.getBool();
+ }
+ 
++bool RuntimeDecorator::isWorkletRuntime(jsi::Runtime& rt) {
++  auto isWorklet = rt.global().getProperty(rt, "_WORKLET");
++  return isWorklet.isBool() && isWorklet.getBool();
++}
++
+ bool RuntimeDecorator::isReactRuntime(jsi::Runtime& rt) {
+   return !isWorkletRuntime(rt);
+ }
+diff --git a/node_modules/react-native-reanimated/Common/cpp/headers/Tools/RuntimeDecorator.h b/node_modules/react-native-reanimated/Common/cpp/headers/Tools/RuntimeDecorator.h
+index ecc518c..ae0b1f3 100644
+--- a/node_modules/react-native-reanimated/Common/cpp/headers/Tools/RuntimeDecorator.h
++++ b/node_modules/react-native-reanimated/Common/cpp/headers/Tools/RuntimeDecorator.h
+@@ -20,7 +20,17 @@ public:
+                                 MeasuringFunction measure,
+                                 TimeProviderFunction getCurrentTime);
+   
++  /**
++   Returns true if the given Runtime is the Reanimated UI-Thread Runtime.
++   */
++  static bool isUIRuntime(jsi::Runtime &rt);
++  /**
++   Returns true if the given Runtime is a Runtime that supports Workletization. (REA, Vision, ...)
++   */
+   static bool isWorkletRuntime(jsi::Runtime &rt);
++  /**
++   Returns true if the given Runtime is the default React-JS Runtime.
++   */
+   static bool isReactRuntime(jsi::Runtime &rt);
+ };
+ 
