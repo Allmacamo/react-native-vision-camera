@@ -64,7 +64,7 @@ export const App: NavigationFunctionComponent = ({ componentId }) => {
   const [targetFps] = useSelector(FpsSelector);
   console.log(`Target FPS: ${targetFps}`);
   const fps = useMemo(() => {
-    return 20;
+    return 50;
     if (enableNightMode && !device?.supportsLowLightBoost) {
       // User has enabled Night Mode, but Night Mode is not natively supported, so we simulate it by lowering the frame rate.
       return 30;
@@ -275,7 +275,7 @@ export const App: NavigationFunctionComponent = ({ componentId }) => {
       <StatusBarBlurBackground />
 
       <AnimateableText
-        style={{ position: 'absolute', backgroundColor: 'black', color: 'white', top: 50, alignSelf: 'center', fontSize: 30 }}
+        style={{ position: 'absolute', backgroundColor: 'black', color: 'white', top: 80, alignSelf: 'center', fontSize: 30 }}
         animatedProps={animatedTextProps}
       />
 
