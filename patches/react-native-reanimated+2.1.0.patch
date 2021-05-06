@@ -1,5 +1,5 @@
 diff --git a/node_modules/react-native-reanimated/Common/cpp/SharedItems/MutableValue.cpp b/node_modules/react-native-reanimated/Common/cpp/SharedItems/MutableValue.cpp
-index da4b9cb..2f5e04a 100644
+index da4b9cb..7ae7ec0 100644
 --- a/node_modules/react-native-reanimated/Common/cpp/SharedItems/MutableValue.cpp
 +++ b/node_modules/react-native-reanimated/Common/cpp/SharedItems/MutableValue.cpp
 @@ -16,7 +16,7 @@ void MutableValue::setValue(jsi::Runtime &rt, const jsi::Value &newValue) {
@@ -18,7 +18,7 @@ index da4b9cb..2f5e04a 100644
 +  if (!runtimeManager->valueSetter) {
 +    throw jsi::JSError(rt, "Value-Setter is not yet configured! Make sure the core-functions are installed.");
 +  }
-   
+ 
 -  if (RuntimeDecorator::isReactRuntime(rt)) {
 +  if (RuntimeDecorator::isUIRuntime(rt)) {
 +    // UI thread
@@ -54,7 +54,7 @@ index da4b9cb..2f5e04a 100644
      }
 -    return;
    }
-   
+ 
 -  // UI thread
 -  if (propName == "value") {
 -    auto setterProxy = jsi::Object::createFromHostObject(rt, std::make_shared<MutableValueSetterProxy>(shared_from_this()));
@@ -75,7 +75,7 @@ index da4b9cb..2f5e04a 100644
 @@ -72,7 +76,7 @@ jsi::Value MutableValue::get(jsi::Runtime &rt, const jsi::PropNameID &name) {
      return getValue(rt);
    }
-   
+ 
 -  if (RuntimeDecorator::isWorkletRuntime(rt)) {
 +  if (RuntimeDecorator::isUIRuntime(rt)) {
      // _value and _animation should be accessed from UI only
