@@ -4752,6 +4752,11 @@ react-lifecycles-compat@2.0.0:
   resolved "https://registry.yarnpkg.com/react-lifecycles-compat/-/react-lifecycles-compat-2.0.0.tgz#71d9c4cde47114c4102454f76da055c2bc48c948"
   integrity sha512-txfpPCQYiazVdcbMRhatqWKcAxJweUu2wDXvts5/7Wyp6+Y9cHojqXHsLPEckzutfHlxZhG8Oiundbmp8Fd6eQ==
 
+react-native-animateable-text@^0.6.2:
+  version "0.6.2"
+  resolved "https://registry.yarnpkg.com/react-native-animateable-text/-/react-native-animateable-text-0.6.2.tgz#ff43d0478010f1cd73042db4b150afeb1d346999"
+  integrity sha512-BtUDrvTY00NRffu9DGBmscuTZi2rBQ4xLwE7b/7atiXY5sPItY6z2FWB3XacneChfTU15U6euCTMVd4+edSxvA==
+
 react-native-codegen@^0.0.6:
   version "0.0.6"
   resolved "https://registry.yarnpkg.com/react-native-codegen/-/react-native-codegen-0.0.6.tgz#b3173faa879cf71bfade8d030f9c4698388f6909"
